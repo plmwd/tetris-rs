@@ -52,7 +52,7 @@ impl BlockBundle {
     }
 }
 
-#[derive(Reflect, Component, Default, Clone)]
+#[derive(Reflect, Component, Default, Clone, Debug)]
 #[reflect(Component)]
 enum TetrominoKind {
     #[default]
@@ -77,12 +77,12 @@ struct TetrominoBundle {
 impl TetrominoBundle {
     fn new(kind: TetrominoKind, x: i32, y: i32) -> Self {
         Self {
-            kind,
+            kind: kind.clone(),
             transform_bundle: TransformBundle {
                 local: Transform::from_xyz(x as f32 * BLOCK_SIZE, y as f32 * BLOCK_SIZE, 0.0),
                 ..default()
             },
-            name: Name::new("Tetromino"),
+            name: Name::new(format!("Tetromino-{:?}", kind)),
             ..default()
         }
     }
@@ -219,4 +219,5 @@ fn setup(mut commands: Commands) {
         });
 
     commands.spawn_tetromino(TetrominoKind::I, (0, 0).into());
+    commands.spawn_tetromino(TetrominoKind::J, (0, 1).into());
 }
