@@ -1,9 +1,12 @@
-use bevy::{ecs::system::Command, prelude::*};
+use bevy::{ecs::system::Command, prelude::*, transform::TransformSystem};
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
 const BLOCK_SIZE: f32 = 20.;
 const PLAYFIELD_WIDTH: i32 = 10;
 const PLAYFIELD_HEIGHT: i32 = 20;
+const TETROMINO_SPAWN_RATE: f32 = 10.0;
+const TETROMINO_FALL_VELOCITY: f32 = 50.0;
+const TIME_STEP: f32 = 1.0 / 60.0;
 
 #[derive(Reflect, Component, Default)]
 struct Collider;
@@ -29,6 +32,9 @@ struct BlockBundle {
     coords: Coordinates,
     collider: Collider,
 }
+
+#[derive(Resource)]
+struct TetrominoSpawnTimer(Timer);
 
 impl BlockBundle {
     fn new(coords: Coordinates, color: Color) -> Self {
@@ -176,12 +182,22 @@ impl<'w, 's> TetrisCommandsExt for Commands<'w, 's> {
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
-        .add_plugin(WorldInspectorPlugin::new())
-        .add_startup_system(setup)
         .register_type::<TetrominoKind>()
         .register_type::<Coordinates>()
         .register_type::<Collider>()
+        .insert_resource(TetrominoSpawnTimer(Timer::from_seconds(
+            TETROMINO_SPAWN_RATE,
+            TimerMode::Repeating,
+        )))
+        .add_plugins(DefaultPlugins)
+        .add_plugin(WorldInspectorPlugin::new())
+        .add_startup_system(setup)
+        .add_system(spawn_tetromino)
+        .add_system(
+            update_coordinate_transforms
+                .in_base_set(CoreSet::PostUpdate)
+                .before(TransformSystem::TransformPropagate),
+        )
         .run();
 }
 
@@ -220,4 +236,40 @@ fn setup(mut commands: Commands) {
 
     commands.spawn_tetromino(TetrominoKind::I, (0, 0).into());
     commands.spawn_tetromino(TetrominoKind::J, (0, 1).into());
+}
+
+fn spawn_tetromino(
+    time: Res<Time>,
+    mut timer: ResMut<TetrominoSpawnTimer>,
+    mut commands: Commands,
+) {
+    if !timer.0.tick(time.delta()).finished() {
+        return;
+    }
+
+    commands.spawn_tetromino(
+        TetrominoKind::J,
+        Coordinates::new(PLAYFIELD_WIDTH / 2, PLAYFIELD_HEIGHT / 2),
+    );
+}
+
+fn move_tetrominos(time: Res<Time>, mut query: Query<&mut Transform, With<TetrominoKind>>) {
+    for mut transform in &mut query {
+        transform.translation.y -= TETROMINO_FALL_VELOCITY * time.delta().as_secs_f32();
+    }
+}
+
+fn kill_tetromino(query: Query<(Entity, &Transform), With<TetrominoKind>>, mut commands: Commands) {
+    for (entity, transform) in &query {
+        if transform.translation.y <= 0.0 {
+            commands.entity(entity).despawn_recursive();
+        }
+    }
+}
+
+fn update_coordinate_transforms(mut query: Query<(&Coordinates, &mut Transform)>) {
+    for (coords, mut transform) in &mut query {
+        transform.translation.x = coords.0.x as f32 * BLOCK_SIZE;
+        transform.translation.y = coords.0.y as f32 * BLOCK_SIZE;
+    }
 }
